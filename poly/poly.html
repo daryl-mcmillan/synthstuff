@@ -1,0 +1,152 @@
+<html>
+<head>
+<title>poly</title>
+<style>
+input[type=range] {
+	width: 400px;
+}
+</style>
+</head>
+
+<body>
+
+<script>
+
+function addSlider( p, label, min, max, step, val ) {
+	var l = document.createElement( "label" );
+	var i = document.createElement( "input" );
+	i.type = "range";
+	i.min = min;
+	i.max = max;
+	i.step = step;
+	i.value = val;
+	l.appendChild(i);
+	l.appendChild( document.createTextNode( label ) );
+	p.appendChild( l );
+	p.appendChild( document.createElement( "br" ) );
+	return i;
+}
+
+function addBeat() {
+
+	var box = document.createElement( "div" );
+	box.style.padding = "1em";
+	box.style.margin = "1em";
+	box.style.width = "fit-content";
+	box.style.border = "1px solid black";
+
+	var divide = addSlider( box, "divide", 1, 48, 1, 1 );
+	var width = addSlider( box, "width", 0, 100, 1, 50 );
+	var swing = addSlider( box, "swing", 0, 100, 1, 0 );
+	var mute = addSlider( box, "mute", 0, 100, 1, 0 );
+	var phase = addSlider( box, "phase", 0, 100, 1, 0 );
+
+	document.body.appendChild( box );
+
+	return {
+		getValue: function( t ) {
+			t = ( t + 1.0 - (phase.valueAsNumber / 100) ) % 1.0;
+			var t_beat = ( t * divide.valueAsNumber ) % 1.0;
+			var beat = Math.floor( t * divide.valueAsNumber );
+			var mute_beats = Math.round( divide.valueAsNumber * ( mute.valueAsNumber / 100 ) );
+			if( beat < mute_beats ) {
+				return 0;
+			}
+			if( beat % 2 == 1 ) {
+				t_beat = ( t_beat + 1.0 - (swing.valueAsNumber / 100) ) % 1.0;
+			}
+			if( t_beat >= (width.valueAsNumber / 100) ) {
+				return 0;
+			}
+			return 1;
+		}
+	};
+}
+
+var beats = [
+	addBeat(),
+	addBeat(),
+	addBeat()
+];
+
+window.updateGate = function() {};
+
+var button = document.createElement( "button" );
+button.innerText = "play";
+button.onclick = function() {
+	button.onclick = function() {};
+	const audioContext = new AudioContext();
+
+	var buffers = [];
+
+	for( var b=0; b<beats.length; b++ ) {
+		const osc = new OscillatorNode(audioContext, {
+			type: "sawtooth",
+			frequency: 110
+		} );
+		const gain = new GainNode(audioContext, {
+			gain: 1
+		} );
+		osc.connect( gain );
+		gain.connect( audioContext.destination );
+		osc.start();
+	
+		const buffer = audioContext.createBuffer( 1, 24000, 24000 );
+		const channelBuffer = buffer.getChannelData( 0 );
+		const lfo = new AudioBufferSourceNode(audioContext, {
+			buffer: buffer,
+			loop: true
+		} );
+		lfo.connect( gain.gain );
+		lfo.start();
+		buffers.push( channelBuffer );
+	}
+	window.updateGate = function () {
+		for( var i=0; i<buffers.length; i++ ) {
+			var beat = beats[i];
+			var channelBuffer = buffers[i];
+			for( let i=0; i<channelBuffer.length; i++ ) {
+				var t = i / channelBuffer.length;
+				if( beat.getValue(t) ) {
+					channelBuffer[i] = 1;
+				} else {
+					channelBuffer[i] = -1;
+				}
+			}
+		}
+	};
+	window.updateGate();
+};
+document.body.appendChild( button );
+document.body.appendChild( document.createElement( "br" ) );
+
+var canvas = document.createElement( "canvas" );
+canvas.width = 800;
+canvas.height = 50 * beats.length;
+canvas.style.border = "1px solid black";
+document.body.appendChild( canvas );
+
+var ctx = canvas.getContext( "2d" );
+
+function draw() {
+	
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
+	
+	for( var i=0; i<beats.length; i++ ) {
+		for( var x=0; x < canvas.width; x++ ) {
+			var t = x / canvas.width;
+			if( beats[i].getValue(t) ) {
+				ctx.fillRect( x, 50 * i + 10, 1, 30 );
+			}
+		}
+	}
+	window.updateGate();
+	window.requestAnimationFrame( draw );
+}
+
+window.requestAnimationFrame( draw );
+
+</script>
+
+</body>
+</html>
