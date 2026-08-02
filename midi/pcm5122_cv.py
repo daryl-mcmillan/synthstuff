@@ -36,7 +36,7 @@ right_loop:
 """
 compiled_asm = adafruit_pioasm.assemble(i2s_pio_asm)
 
-dc_memory_buffer = array.array('i', [0, 0])  # Defaults to pure 0V ground out-of-box
+dc_memory_buffer = array.array('i', [0, 0])
 
 sm = rp2pio.StateMachine(
     compiled_asm,
