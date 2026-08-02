@@ -1,8 +1,15 @@
 import board
+import busio
+import digitalio
 import rp2pio
 import adafruit_pioasm
 import array
 import time
+
+led = digitalio.DigitalInOut(board.LED)
+led.direction = digitalio.Direction.OUTPUT
+
+# set up cv output via I2S
 
 BCK_PIN = board.GP10   # Bit Clock
 WSEL_PIN = board.GP11  # Word Select (LRCK)
@@ -50,18 +57,50 @@ sm = rp2pio.StateMachine(
     out_shift_right=False        # MSB first
 )
 
-# set up DMA
 sm.background_write(loop=dc_memory_buffer)
 
-def set_dc_val(val):
+def set_note_cv(val):
+    i = (val-64) * 83471018
+    i = min( 0x7FFFFFFF, max( i, 0 - 0x80000000 ) )
     # this is the DMA buffer
-    dc_memory_buffer[0] = val  # left
-    dc_memory_buffer[1] = val  # right
+    dc_memory_buffer[0] = i  # left
+    dc_memory_buffer[1] = i  # right
+
+
+# set up midi input
+uart1 = busio.UART(
+    tx=board.GP4,
+    rx=board.GP5,
+    baudrate=31250
+)
+
+current_midi_command = 0
+midi_clock = 0
+
+def process_midi_command():
+    global current_midi_command
+    global midi_clock
+
+    b = uart1.read( 1 )
+    if b is None or len(b) == 0:
+        return
+    if b[0] == 0xF8:
+        midi_clock += 1
+        # midi clock tick
+        if midi_clock % 24 == 0:
+            # quarter note tick
+            pass
+        return
+    current_midi_command = (current_midi_command << 8) + b[0]
+    if ( current_midi_command & 0x00FF0000 ) == 0x00900000:
+        led.value = True
+        set_note_cv( ( current_midi_command >> 8 ) & 0x7F )
+        current_midi_command = 0
+        return
+    if ( current_midi_command & 0x00FF0000 ) == 0x00800000:
+        led.value = False
+        current_midi_command = 0
+        return
 
 while True:
-    set_dc_val(2003238912)   # 2v
-    time.sleep(0.2)
-    set_dc_val(1001652224)   # 1v
-    time.sleep(0.2)
-    set_dc_val(0)  # 0v
-    time.sleep(0.2)
+    process_midi_command()
