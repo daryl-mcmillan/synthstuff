@@ -20,6 +20,8 @@ TARGET_SAMPLE_RATE = 96000
 BITS_PER_SAMPLE = 32
 PIO_CLOCK_FREQ = TARGET_SAMPLE_RATE * 2 * BITS_PER_SAMPLE * 2 # 2 cycles per bit
 
+PULSE_DATA = array.array('i', [0])
+
 i2s_pio_asm = """
 .program i2s_stereo
 .side_set 2
@@ -91,8 +93,7 @@ def add_pulse_pin( pin ):
     )
 
 def send_pulse(sm):
-    array.array('i', [0])
-    sm.write(array.array('i', [0]))
+    sm.write(PULSE_DATA)
 
 clock_pin = add_pulse_pin(board.GP2)
 clock_24_pin = add_pulse_pin(board.GP3)
@@ -118,7 +119,7 @@ class NullOutputChannel:
     def __init__(self):
         pass
     
-    def note_on(self, note):
+    def note_on(self, note, velocity):
         pass
     
     def note_off(self):
@@ -176,8 +177,14 @@ def process_midi_command():
     current_midi_command = (current_midi_command << 8) + b[0]
     if ( current_midi_command & 0x00F00000 ) == 0x00900000:
         channel = ( current_midi_command & 0x000F0000 ) >> 16
-        output_channels[channel].note_on( ( current_midi_command >> 8 ) & 0x7F, current_midi_command & 0x7F )
-        led.value = True
+        note = ( current_midi_command >> 8 ) & 0x7F
+        velocity = current_midi_command & 0x7F
+        if velocity == 0:
+            output_channels[channel].note_off()
+            led.value = False
+        else:
+            output_channels[channel].note_on( note, velocity )
+            led.value = True
         current_midi_command = 0
         return
     if ( current_midi_command & 0x00F00000 ) == 0x00800000:
