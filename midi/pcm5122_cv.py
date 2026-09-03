@@ -1,6 +1,7 @@
 import board
 import busio
 import digitalio
+import pwmio
 import rp2pio
 import adafruit_pioasm
 import array
@@ -60,7 +61,7 @@ sm = rp2pio.StateMachine(
 sm.background_write(loop=dc_memory_buffer)
 
 def set_note_cv(cv_index, val):
-    semi = val - 69 # A440 = 0
+    semi = val - 36 # C2 = 0
     i = semi * 41735509
     i = min( 0x7FFFFFFF, max( i, 0 - 0x80000000 ) )
     # this is the DMA buffer
@@ -97,14 +98,16 @@ clock_pin = add_pulse_pin(board.GP2)
 clock_24_pin = add_pulse_pin(board.GP3)
 
 class OutputChannel:
-    def __init__(self, cv_index, gate_pin, trigger_pin):
+    def __init__(self, cv_index, velocity_pin, gate_pin, trigger_pin):
         self.cv_index = cv_index
+        self.velocity_pin = pwmio.PWMOut(velocity_pin, frequency=100_000, duty_cycle=0)
         self.gate_pin = digitalio.DigitalInOut(gate_pin)
         self.gate_pin.direction = digitalio.Direction.OUTPUT
         self.trigger_pin = add_pulse_pin(trigger_pin)
 
-    def note_on(self, note):
+    def note_on(self, note, velocity):
         set_note_cv( self.cv_index, note )
+        self.velocity_pin.duty_cycle = velocity << 9;
         send_pulse( self.trigger_pin )
         self.gate_pin.value = True
 
@@ -124,8 +127,8 @@ class NullOutputChannel:
 null_output = NullOutputChannel()
 
 output_channels = [
-    OutputChannel( cv_index = 0, gate_pin = board.GP8, trigger_pin = board.GP6 ),
-    OutputChannel( cv_index = 1, gate_pin = board.GP9, trigger_pin = board.GP7 ),
+    OutputChannel( cv_index = 0, velocity_pin = board.GP14, gate_pin = board.GP8, trigger_pin = board.GP6 ),
+    OutputChannel( cv_index = 1, velocity_pin = board.GP15, gate_pin = board.GP9, trigger_pin = board.GP7 ),
     null_output,
     null_output,
     null_output,
@@ -167,10 +170,13 @@ def process_midi_command():
             # quarter note tick
             send_pulse( clock_pin )
         return
+    if b[0] > 0xF8:
+        # skip other realtime messages
+        return
     current_midi_command = (current_midi_command << 8) + b[0]
     if ( current_midi_command & 0x00F00000 ) == 0x00900000:
         channel = ( current_midi_command & 0x000F0000 ) >> 16
-        output_channels[channel].note_on( ( current_midi_command >> 8 ) & 0x7F )
+        output_channels[channel].note_on( ( current_midi_command >> 8 ) & 0x7F, current_midi_command & 0x7F )
         led.value = True
         current_midi_command = 0
         return
