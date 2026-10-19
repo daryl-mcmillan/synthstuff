@@ -185,13 +185,13 @@ def process_midi_command():
         else:
             output_channels[channel].note_on( note, velocity )
             led.value = True
-        current_midi_command = 0
+        current_midi_command = 0;
         return
     if ( current_midi_command & 0x00F00000 ) == 0x00800000:
         channel = ( current_midi_command & 0x000F0000 ) >> 16
         output_channels[channel].note_off()
         led.value = False
-        current_midi_command = 0
+        current_midi_command = 0;
         return
 
 while True:
